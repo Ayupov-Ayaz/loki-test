@@ -3,11 +3,16 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 )
+
+var ErrNotFound = errors.New("not found")
 
 type Loki struct {
 	app     string
@@ -76,4 +81,53 @@ func (l Loki) Push(objects ...interface{}) error {
 	}
 
 	return l.push(log)
+}
+
+func (l *Loki) get(params url.Values) ([]byte, error) {
+	url := l.baseUrl + "/loki/api/v1/query_range?" + params.Encode()
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request failed: %w", err)
+	}
+
+	res, err := l.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer res.Body.Close()
+
+	return ioutil.ReadAll(res.Body)
+}
+
+func (l *Loki) Read(start, end time.Time, query string, limit int) ([][]string, error) {
+	query = `{app="` + l.app + `"} ` + query
+
+	params := url.Values{}
+	params.Add("start", strconv.FormatInt(start.UnixNano(), 10))
+	params.Add("end", strconv.FormatInt(end.UnixNano(), 10))
+	params.Add("limit", strconv.Itoa(limit))
+	params.Add("query", query)
+
+	raw, err := l.get(params)
+	if err != nil {
+		return nil, err
+	}
+
+	q := &Query{}
+
+	if err := json.Unmarshal(raw, q); err != nil {
+		return nil, err
+	}
+
+	if len(q.Data.Result) != 1 {
+		return nil, ErrNotFound
+	}
+
+	if len(q.Data.Result[0].Values) == 0 {
+		return nil, errors.New("log miss")
+	}
+
+	return q.Data.Result[0].Values, nil
 }

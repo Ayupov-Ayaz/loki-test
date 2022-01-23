@@ -1,8 +1,14 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"loki-test/service"
 	"strconv"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -16,9 +22,13 @@ type Message struct {
 	Message string `json:"message"`
 }
 
-func main() {
-	loki := service.NewLoki(baseUrl, app)
+type History struct {
+	Id  string `json:"id"`
+	Bet int    `json:"bet"`
+	Win int    `json:"win"`
+}
 
+func pushMessage(wg *sync.WaitGroup, loki *service.Loki) {
 	m := Message{}
 
 	for i := 0; i < count; i++ {
@@ -28,5 +38,64 @@ func main() {
 		if err := loki.Push(m); err != nil {
 			panic(err)
 		}
+	}
+
+	wg.Done()
+}
+
+func pushHistory(wg *sync.WaitGroup, loki *service.Loki) {
+	h := History{}
+
+	for i := 0; i < count; i++ {
+		h.Id = uuid.New().String()
+		h.Bet = i * 5352
+		h.Win = i * 343
+
+		if err := loki.Push(h); err != nil {
+			panic(err)
+		}
+	}
+
+	wg.Done()
+}
+
+func readMessage(loki *service.Loki) error {
+	limit := 1
+	query := `|="message" `
+
+	for i := 0; i < count; i++ {
+		start := time.Now().Add(-1 * time.Second)
+		end := time.Now().Add(1 * time.Second)
+		
+		list, err := loki.Read(start, end, query, limit)
+		if err != nil {
+
+			if errors.Is(err, service.ErrNotFound) {
+				break
+			}
+
+			return err
+		}
+
+		for j := 0; j < len(list); j++ {
+			fmt.Println("time=", list[j][0], "message = ", list[j][1])
+		}
+	}
+
+	return nil
+}
+
+func main() {
+	loki := service.NewLoki(baseUrl, app)
+	wg := &sync.WaitGroup{}
+	wg.Add(2)
+
+	go pushMessage(wg, loki)
+	go pushHistory(wg, loki)
+
+	wg.Wait()
+
+	if err := readMessage(loki); err != nil {
+		panic(err)
 	}
 }

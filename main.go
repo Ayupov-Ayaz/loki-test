@@ -3,10 +3,11 @@ package main
 import (
 	"errors"
 	"fmt"
-	"loki-test/service"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/ayupov-ayaz/loki-test/service"
 
 	"github.com/google/uuid"
 )
@@ -66,7 +67,7 @@ func readMessage(loki *service.Loki) error {
 	for i := 0; i < count; i++ {
 		start := time.Now().Add(-1 * time.Second)
 		end := time.Now().Add(1 * time.Second)
-		
+
 		list, err := loki.Read(start, end, query, limit)
 		if err != nil {
 

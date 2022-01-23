@@ -1,4 +1,4 @@
-module loki-test
+module github.com/ayupov-ayaz/loki-test
 
 go 1.17
 
